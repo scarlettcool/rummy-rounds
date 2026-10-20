@@ -3,7 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import RummyView from '../RummyView.vue'
 import { ApiError, readRoom, roomAction } from '../../game/api'
-import { practiceRoom } from '../../game/room'
+import { practiceRoom, type CardColor } from '../../game/room'
 
 const route = reactive({ query: { room: 'room-test' } })
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
@@ -107,5 +107,57 @@ describe('table request safety', () => {
     expect(textState().discard.id).toBe(selected)
     expect(textState().turn).toBe(2)
     expect(roomAction).not.toHaveBeenCalled()
+  })
+
+  it('highlights suggestions without selecting a discard or sending an action, then clears on sync', async () => {
+    const current = fixture()
+    const colors: CardColor[] = ['red', 'yellow', 'green', 'blue']
+    current.player.hand = [1, 1, 1, 2, 2, 2, 3, 4, 5, 6].map((value, i) => ({
+      id: `known-${i}`, color: colors[i % 4], value: String(value),
+    }))
+    vi.mocked(readRoom).mockResolvedValue(current)
+    await open()
+    expect(textState().coveredCards).toBe(10)
+    const suggestion = wrapper.findAll('.insight-group')[0]
+    await suggestion.trigger('click')
+    expect(suggestion.attributes('aria-pressed')).toBe('true')
+    const highlighted = textState().highlightedIds
+    expect(highlighted.length).toBe(3)
+    expect(wrapper.findAll('.in-suggestion')).toHaveLength(3)
+    expect(textState().selectedId).toBeNull()
+    expect(roomAction).not.toHaveBeenCalled()
+    await wrapper.get('.sort-button').trigger('click')
+    expect(textState().highlightedIds).toEqual(highlighted)
+    await suggestion.trigger('click')
+    expect(textState().highlightedIds).toEqual([])
+    await suggestion.trigger('click')
+    await wrapper.get('.table-toolbar button').trigger('click')
+    await flushPromises()
+    expect(textState().highlightedIds).toEqual([])
+    expect(current.player.hand).toHaveLength(10)
+  })
+
+  it('keeps discard selection independent of group highlighting and clears both after a turn', async () => {
+    const current = fixture()
+    current.player.hand = Array.from({ length: 11 }, (_, i) => ({ id: `run-${i}`, color: 'red' as const, value: String(i + 1) }))
+    current.player.hasDrawn = true
+    vi.mocked(readRoom).mockResolvedValue(current)
+    await open()
+    await wrapper.get('.hand-row .game-card').trigger('click')
+    const selected = textState().selectedId
+    await wrapper.get('.insight-group').trigger('click')
+    expect(textState().selectedId).toBe(selected)
+    expect(wrapper.get('[data-testid="discard-card"]').attributes('disabled')).toBeUndefined()
+    vi.mocked(roomAction).mockResolvedValue({
+      ...current, revision: 1, turn: 2,
+      player: { ...current.player, hasDrawn: false, hand: current.player.hand.slice(1) },
+      discardPile: current.player.hand[0],
+    })
+    await wrapper.get('[data-testid="discard-card"]').trigger('click')
+    await flushPromises()
+    expect(roomAction).toHaveBeenCalledWith('room-test', 'discard', 0, selected)
+    expect(textState().selectedId).toBeNull()
+    expect(textState().highlightedIds).toEqual([])
+    expect(textState().coveredCards).toBe(10)
   })
 })

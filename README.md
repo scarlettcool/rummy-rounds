@@ -1,7 +1,9 @@
 # rummy-rounds
 Rummy Club: a responsive single-player draw/select/discard practice table using the existing 108-card Phase 10-style deck.
 
-This build implements turn practice and saved rooms. Meld validation, special-card effects, scoring, authenticated seats and multiplayer are not implemented.
+This build implements turn practice, saved rooms and natural-card grouping suggestions. Meld submission, special-card effects, scoring, authenticated seats and multiplayer are not implemented.
+
+The hand assistant suggests disjoint sets of at least three equal numbers and mixed-color runs of at least four consecutive numbers (1–12, without wrapping). It maximizes the number of covered cards, then prefers fewer groups; sorting the same hand keeps the suggestions stable. Clicking a suggestion highlights its cards without selecting a discard or changing the saved game. Wild/skip cards and phase objectives are excluded from these practice references.
 ## Getting Started
 Make sure `npm` is installed.
 ```Shell

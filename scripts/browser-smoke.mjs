@@ -170,10 +170,59 @@ try {
     assert.equal((await state(page)).handSize, 10);
     assert.equal(practiceRequests, 0);
     await writeFile(resolve(output, `${name}-state.json`), JSON.stringify(await state(page), null, 2));
+
+    // A deterministic display fixture exercises suggestions in every viewport;
+    // the create/save/recovery flows above still use the live backend.
+    const advice = await context.newPage();
+    advice.on('pageerror', e => pageErrors.push(e.message));
+    const colors = ['red', 'yellow', 'green', 'blue'];
+    const knownHand = [1, 1, 1, 2, 2, 2, 3, 4, 5, 6, 'skip'].map((value, i) => ({
+      id: `known-${i}`, color: value === 'skip' ? 'wild' : colors[i % 4], value: String(value),
+    }));
+    let adviceActions = 0;
+    advice.on('request', request => {
+      if (request.method() !== 'GET' && request.url().includes('/api/games/')) adviceActions++;
+    });
+    await advice.route('**/api/games/suggestions-qa', route => route.fulfill({ json: {
+      id: 'suggestions-qa', created: Date.now(), revision: 0, turn: 1, drawPileCount: 96,
+      discardPile: { id: 'known-discard', color: 'blue', value: '12' },
+      player: { id: 'local-player', name: '你', hand: knownHand, hasDrawn: true },
+    } }));
+    await advice.goto(`${url}/rummy?room=suggestions-qa`);
+    await ready(advice);
+    assert.equal((await state(advice)).coveredCards, 10);
+    assert.equal(await advice.locator('.insight-group').count(), 3);
+    await advice.locator('.insight-group').first().focus();
+    await advice.keyboard.press('Space');
+    assert.equal((await state(advice)).selectedId, null, 'Suggestion selected a discard');
+    assert.equal(await advice.locator('.in-suggestion').count(), 3);
+    const highlighted = (await state(advice)).highlightedIds;
+    await advice.getByRole('button', { name: '理牌', exact: true }).click();
+    assert.deepEqual((await state(advice)).highlightedIds, highlighted, 'Sorting changed the highlighted group');
+    const adviceCards = advice.locator('.hand-row .game-card');
+    for (let i = 0; i < 11; i++) {
+      await adviceCards.nth(i).click({ position: { x: 8, y: 8 } });
+      assert.equal(await adviceCards.nth(i).getAttribute('aria-pressed'), 'true', `Highlight blocks card ${i}`);
+    }
+    const adviceSelected = (await state(advice)).selectedId;
+    await advice.locator('.insight-group').nth(1).click();
+    assert.equal((await state(advice)).selectedId, adviceSelected, 'Highlight changed the discard selection');
+    await noOverflow(advice);
+    await screenshot(advice, `${name}-hand-suggestions`);
+    if (name === 'landscape') {
+      const box = await advice.getByTestId('discard-card').boundingBox();
+      assert.ok(box && box.y + box.height <= viewport.height, 'Suggestions push landscape actions off screen');
+      assert.equal(await advice.evaluate(() => window.scrollY), 0);
+    }
+    assert.equal(adviceActions, 0, 'Suggestion sent a game action');
+    await advice.reload();
+    await ready(advice);
+    assert.deepEqual((await state(advice)).highlightedIds, [], 'Reload retained a stale highlight');
+    await advice.close();
     await context.close();
   }
   assert.deepEqual(pageErrors, [], 'Unexpected browser errors');
-  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'no overflow'] }, null, 2));
+  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'disjoint suggestions', 'keyboard highlight', 'highlight and discard independence', 'landscape actions visible', 'no overflow'] }, null, 2));
 } finally {
   await writeFile(resolve(output, 'server.log'), logs.join(''));
   await writeFile(resolve(output, 'page-errors.json'), JSON.stringify(pageErrors));

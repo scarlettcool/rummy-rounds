@@ -181,7 +181,19 @@ h1, h2, p { margin: 0; }
 .hand-slot.just-drawn:not(.is-selected) { z-index: 1; }
 .hand-slot.just-drawn .game-card:not(.selected) { box-shadow: 0 0 0 1px #e3c98a, 0 4px 12px #0005; }
 .hand-slot .game-card:hover:not(:disabled):not(.selected) { transform: translateY(-5px); }
-.hand-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 23px; padding-top: 18px; border-top: 1px solid var(--line); }
+.hand-slot.in-suggestion .game-card { outline: 2px solid #81c7b1; outline-offset: -3px; }
+.hand-slot .game-card:focus-visible { outline: 3px solid var(--gold-soft); outline-offset: -3px; }
+.hand-insight { display: flex; align-items: center; gap: 14px; min-height: 42px; margin-top: 15px; color: #bac9b8; }
+.insight-title { flex-shrink: 0; font-size: 10px; color: #d8cfb5; }
+.insight-title small { display: block; margin-top: 3px; color: #849c8b; font-size: 8px; }
+.insight-groups { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-x: auto; padding: 3px; scrollbar-width: thin; }
+.insight-group { flex-shrink: 0; min-height: 36px; padding: 6px 12px; border: 1px solid #a7c9ae38; border-radius: 6px; background: #b5d6ae08; color: #bdcbb9; font-size: 10px; font-weight: 400; white-space: nowrap; }
+.insight-group[aria-pressed="true"] { border-color: #81c7b1; color: #e2f3e4; background: #81c7b11c; }
+.insight-group:disabled { opacity: .5; }
+.insight-group:focus-visible { outline-offset: 0; }
+.insight-empty { color: #8ea794; font-size: 10px; line-height: 1.7; }
+.insight-coverage { margin-left: auto; flex-shrink: 0; font-size: 10px; color: #b3c5ab; font-variant-numeric: tabular-nums; }
+.hand-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; padding-top: 18px; border-top: 1px solid var(--line); }
 .action-caption .eyebrow { font-size: 7px; color: #809786; }
 .action-caption b { display: block; margin-top: 6px; font-size: 11px; color: #d0c7ac; font-weight: 400; }
 .action-buttons { display: flex; gap: 12px; }
@@ -319,7 +331,13 @@ h1, h2, p { margin: 0; }
   .hand-slot .game-card { height: 88px; border-radius: 6px; }
   .hand-slot .card-corner { padding: 5px 4px; font-size: 14px; }
   .hand-slot .card-value { font-size: 34px; }
-  .hand-actions { margin-top: 22px; padding-top: 18px; gap: 10px; }
+  .hand-insight { gap: 8px; margin-top: 13px; }
+  .insight-title { font-size: 9px; }
+  .insight-groups { gap: 6px; }
+  .insight-group { padding-inline: 9px; }
+  .insight-empty { font-size: 9px; }
+  .insight-coverage { font-size: 9px; }
+  .hand-actions { margin-top: 8px; padding-top: 14px; gap: 10px; }
   .action-buttons { gap: 8px; }
   .action-buttons > button { min-width: 84px; min-height: 44px; padding-inline: 14px; font-size: 12px; gap: 7px; }
   .action-caption b { font-size: 10px; }
@@ -350,13 +368,13 @@ h1, h2, p { margin: 0; }
   .table-header > .help-trigger, .table-header > .back-button { min-height: 36px; font-size: 10px; }
   .table-toolbar { min-height: 26px; }
   .table-toolbar .text-button { min-height: 26px; }
-  .table-stage { height: 118px; border-width: 4px; border-radius: 46px; }
+  .table-stage { height: 104px; border-width: 4px; border-radius: 46px; }
   .felt-lines { inset: 7px; border-radius: 35px; }
   .table-round { left: 35px; top: 34px; transform: none; text-align: left; }
   .table-round .eyebrow { font-size: 6px; }
   .table-round b { margin-top: 5px; font-size: 10px; }
   .table-stamp, .table-edge-note, .practice-label { display: none; }
-  .pile-area { top: 10px; gap: 18px; }
+  .pile-area { top: 7px; gap: 18px; }
   .pile-group { gap: 5px; }
   .pile-group .game-card, .deck-stack, .empty-card { width: 48px; height: 68px; border-radius: 5px; }
   .pile-group .card-value { font-size: 30px; }
@@ -367,8 +385,8 @@ h1, h2, p { margin: 0; }
   .deck-pattern > small { display: none; }
   .pile-divider { width: 12px; margin-top: -16px; }
   .table-coach { left: auto; right: 28px; bottom: 39px; max-width: 180px; font-size: 9px; }
-  .hand-panel { margin-top: 12px; }
-  .hand-header { min-height: 28px; margin-bottom: 17px; }
+  .hand-panel { margin-top: 8px; }
+  .hand-header { min-height: 28px; margin-bottom: 13px; }
   .player-avatar { width: 28px; height: 28px; font-size: 15px; }
   .player-chip b { font-size: 10px; }
   .player-chip small { display: none; }
@@ -378,7 +396,10 @@ h1, h2, p { margin: 0; }
   .hand-slot .card-value { font-size: 29px; }
   .hand-slot .card-corner { font-size: 11px; padding: 3px 4px; }
   .hand-slot .game-card.selected { transform: translateY(-10px); }
-  .hand-actions { margin-top: 10px; padding-top: 8px; }
+  .hand-insight { min-height: 32px; margin-top: 5px; }
+  .insight-title small { display: none; }
+  .insight-group { min-height: 30px; padding-block: 3px; font-size: 9px; }
+  .hand-actions { margin-top: 4px; padding-top: 5px; }
   .action-buttons > button { min-height: 36px; padding-block: 6px; font-size: 11px; }
   .action-caption b { margin-top: 3px; font-size: 10px; }
   .table-footer { display: none; }

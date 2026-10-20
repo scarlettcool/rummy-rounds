@@ -16,7 +16,8 @@ const dialog = ref<HTMLDialogElement>()
         <li><b>选择一张</b><span>点击手牌选中，再次点击可取消。可用理牌整理顺序。</span></li>
         <li><b>弃牌结束回合</b><span>确认弃牌后保持 10 张，开始下一回合。</span></li>
       </ol>
-      <p class="help-note">108 张牌：四色 1–12 数字牌各两张、8 张万能牌、4 张跳过牌。组牌、特殊牌效果、计分与多人对局尚未开放。</p>
+      <p>组合参考：同点数字 3 张起，连续数字 4 张起（不限颜色，1 与 12 不首尾相连）。每张牌只用于一个建议，优先覆盖更多手牌。点击建议可高亮对应手牌，不会自动选中弃牌。</p>
+      <p class="help-note">108 张牌：四色 1–12 数字牌各两张、8 张万能牌、4 张跳过牌。提示暂不使用万能牌或跳过牌，也不判定阶段目标。组牌提交、特殊牌效果、计分与多人对局尚未开放。</p>
       <button class="primary-button" @click="dialog?.close()">开始练习<UiIcon name="arrow" /></button>
     </div>
   </dialog>

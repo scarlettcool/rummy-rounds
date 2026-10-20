@@ -33,3 +33,12 @@ Original prompt: 继续h5rummy的开发
 ### Deployment boundary
 
 Use one backend process with a writable persistent volume and same-origin API proxy (or configure VITE_API_BASE_URL). Offline practice is intentionally not saved. This is not a completed multiplayer Rummy game; auth, melds, special-card effects and scoring remain separate work.
+
+## Natural-card hand assistant — 2026-10-20
+
+- Stabilize: add bounded, pure natural-card analysis for a maximum 11-card hand. Enumerate valid same-number sets (3+) and mixed-color consecutive runs (4+, no wrapping); choose disjoint groups with maximum coverage, then fewer groups. Wild/skip cards and phase objectives stay outside the reference rules.
+- Modularize: keep the evaluator independent of Vue, API requests and saved-room state. Highlighting suggestions never selects a discard or submits an action; sorting preserves highlights, authoritative state updates clear them.
+- UI: add compact emerald-outlined group highlights, keyboard-operable reference chips and a covered-card count. Preserve the cream cards and club table layout, including narrow phones and landscape.
+- Automate: add boundary, greedy-counterexample, deterministic sample and interaction tests; extend GitHub browser QA with fixed hand fixtures on all four viewports, highlight/card reachability, keyboard use and action visibility.
+- Framework/reuse: export typed analysis results for future objectives and scoring UI. Formal meld submission and any persistent schema changes remain separate increments; no dependency changes or broad refactor in this pass.
+- Local validation: all 19 frontend unit tests, TypeScript checks and production build passed; browser-script syntax and Git whitespace checks passed. GitHub backend/full-browser verification and actual screenshot review pending.

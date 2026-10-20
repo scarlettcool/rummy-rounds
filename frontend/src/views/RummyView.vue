@@ -6,6 +6,7 @@ import UiIcon from '../components/UiIcon.vue'
 import GameHelp from '../components/GameHelp.vue'
 import { ApiError, readRoom, roomAction } from '../game/api'
 import { cardLabel, practiceRoom, rememberRoom, shuffled, type RoomState } from '../game/room'
+import { analyzeHand } from '../game/handAnalysis'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +20,7 @@ const error = ref('')
 const selectedId = ref<string | null>(null)
 const sortBy = ref<'dealt' | 'number' | 'color'>('dealt')
 const lastDrawnId = ref('')
+const activeGroup = ref<number | null>(null)
 let practice = practiceRoom()
 let generation = 0
 
@@ -29,6 +31,10 @@ const hand = computed(() => {
   return cards
 })
 const unavailable = computed(() => loading.value || busy.value || blocked.value || !state.value)
+const analysis = computed(() => analyzeHand(state.value?.player.hand ?? []))
+const highlightedIds = computed(() => new Set(
+  activeGroup.value === null ? [] : analysis.value.groups[activeGroup.value]?.cards.map(c => c.id) ?? [],
+))
 const hint = computed(() => {
   if (loading.value) return '正在准备你的牌桌…'
   if (blocked.value) return '重新同步后继续，当前牌局已保留'
@@ -44,6 +50,7 @@ const selectedLabel = computed(() => {
 function apply(next: RoomState) {
   state.value = next
   selectedId.value = null
+  activeGroup.value = null
   blocked.value = false
 }
 
@@ -53,6 +60,7 @@ async function load() {
   const id = roomId.value
   error.value = ''
   selectedId.value = null
+  activeGroup.value = null
   lastDrawnId.value = ''
   if (offline.value) {
     practice = practiceRoom()
@@ -151,6 +159,8 @@ const renderGameToText = () => JSON.stringify({
   discard: state.value?.discardPile, hasDrawn: state.value?.player.hasDrawn ?? false,
   turn: state.value?.turn ?? 1, revision: state.value?.revision ?? 0,
   selectedId: selectedId.value, loading: loading.value, busy: busy.value, blocked: blocked.value,
+  suggestions: analysis.value.groups, coveredCards: analysis.value.covered,
+  highlightedIds: [...highlightedIds.value],
 })
 const advanceTime = (_ms: number) => undefined
 Object.assign(window, { render_game_to_text: renderGameToText, advanceTime })
@@ -189,10 +199,18 @@ onBeforeUnmount(() => {
     <section class="hand-panel page-width" aria-label="你的手牌">
       <div class="hand-header"><div class="player-chip"><span class="player-avatar">C</span><span><b>你的手牌 <span class="hand-count" data-testid="hand-count">{{ hand.length }}</span></b><small>{{ state?.player.hasDrawn ? '已摸牌，选择一张弃掉' : '准备好就开始这一回合' }}</small></span></div><button class="sort-button" :disabled="unavailable" @click="cycleSort"><UiIcon name="sort" />{{ sortBy === 'number' ? '按数字' : sortBy === 'color' ? '按颜色' : '理牌' }}</button></div>
       <TransitionGroup tag="div" name="hand-card" class="hand-row" :style="{ '--hand-count': Math.max(hand.length, 1) }">
-        <div v-for="card in hand" :key="card.id" class="hand-slot" :class="{ 'is-selected': selectedId === card.id, 'just-drawn': lastDrawnId === card.id }"><GameCard :card="card" :selected="selectedId === card.id" :disabled="unavailable || !state?.player.hasDrawn" @select="select(card.id)" /></div>
+        <div v-for="card in hand" :key="card.id" class="hand-slot" :class="{ 'is-selected': selectedId === card.id, 'just-drawn': lastDrawnId === card.id, 'in-suggestion': highlightedIds.has(card.id) }"><GameCard :card="card" :selected="selectedId === card.id" :disabled="unavailable || !state?.player.hasDrawn" @select="select(card.id)" /></div>
       </TransitionGroup>
+      <div class="hand-insight" aria-label="组合参考">
+        <span class="insight-title">组合参考<small>仅数字牌</small></span>
+        <div class="insight-groups">
+          <span v-if="!analysis.groups.length" class="insight-empty">{{ unavailable ? '同步完成后查看' : '暂无组合 · 同点 3 张起，连号 4 张起' }}</span>
+          <button v-for="(group, index) in analysis.groups" :key="index" class="insight-group" :disabled="unavailable" :aria-pressed="activeGroup === index" :aria-label="`${group.label}，点击高亮对应手牌`" @click="activeGroup = activeGroup === index ? null : index">{{ group.label }}</button>
+        </div>
+        <span v-if="analysis.covered" class="insight-coverage" role="status">{{ analysis.covered }}/{{ hand.length }} 张</span>
+      </div>
       <div class="hand-actions"><div class="action-caption" aria-live="polite"><span class="eyebrow">{{ selectedId ? 'SELECTED CARD' : 'YOUR TURN' }}</span><b>{{ selectedId ? selectedLabel : state?.player.hasDrawn ? '选择一张手牌' : '先摸一张牌' }}</b></div><div class="action-buttons"><button class="secondary-button" data-testid="draw-card" :disabled="unavailable || state?.player.hasDrawn" @click="act('draw')"><UiIcon name="cards" />{{ busy && !state?.player.hasDrawn ? '保存中…' : '摸牌' }}</button><button class="primary-button" data-testid="discard-card" :disabled="unavailable || !state?.player.hasDrawn || !selectedId" @click="act('discard')">{{ busy && state?.player.hasDrawn ? '保存中…' : '弃牌' }}<UiIcon name="arrow" /></button></div></div>
     </section>
-    <footer class="table-footer page-width"><span>练习摸牌与弃牌 · 特殊牌效果及组牌尚未开放</span><span v-if="!offline">进度在服务端保存</span></footer>
+    <footer class="table-footer page-width"><span>组合提示仅供参考 · 组牌提交、特殊牌效果与计分尚未开放</span><span v-if="!offline">进度在服务端保存</span></footer>
   </main>
 </template>
