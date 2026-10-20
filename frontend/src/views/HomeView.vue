@@ -61,6 +61,8 @@ function practice() {
     </header>
     <div class="lobby-toolbar page-width"><span role="status" data-testid="lobby-service"><i class="status-dot" :class="{ connected: service === 'online' }" aria-hidden="true"></i>{{ service === 'checking' ? '正在连接…' : service === 'online' ? '牌桌服务在线' : '离线练习可用' }}</span><button v-if="service !== 'online'" class="text-button" data-testid="retry-connection" :disabled="service === 'checking' || joining" @click="refreshService">{{ service === 'checking' ? '连接中…' : '重试连接' }}<UiIcon name="refresh" /></button><span v-else class="quiet-label">轻松入门 · 随时开局</span></div>
 
+    <div v-if="error" class="notice error page-width" role="alert">{{ error }}<button class="text-button" :disabled="joining" @click="practice">进入离线练习<UiIcon name="arrow" /></button></div>
+
     <section class="lobby-hero page-width" aria-labelledby="lobby-title">
       <div class="hero-copy">
         <span class="eyebrow"><span class="short-line"></span> THE CARD ROOM</span>
@@ -71,8 +73,6 @@ function practice() {
       </div>
       <div class="hero-art" aria-hidden="true"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><span class="art-watermark">R</span><div class="showcase-hand"><GameCard v-for="card in showcase" :key="card.id" :card="card" disabled /></div><div class="art-caption"><span>01 — THE CLASSICS</span><b>ONE MORE ROUND.</b></div></div>
     </section>
-
-    <div v-if="error" class="notice error page-width" role="alert">{{ error }}<button class="text-button" :disabled="joining" @click="practice">进入离线练习<UiIcon name="arrow" /></button></div>
 
     <section class="room-section page-width" aria-labelledby="room-title">
       <div class="section-heading"><div><span class="eyebrow">TAKE YOUR SEAT</span><h2 id="room-title">选择你的牌桌</h2></div><span class="section-aside">单人游玩，无需筹码</span></div>

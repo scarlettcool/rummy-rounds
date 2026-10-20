@@ -104,6 +104,10 @@ try {
     await page.getByTestId('lobby-service').filter({ hasText: '牌桌服务在线' }).waitFor();
     assert.equal(new URL(page.url()).pathname, '/');
     await noOverflow(page);
+    assert.equal(await page.getByRole('alert').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= window.innerHeight && element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }), true, 'Lobby create error must be visible without scrolling or navigation overlap');
     await screenshot(page, `${name}-lobby-create-retry`);
     await page.unroute('**/api/games');
     await page.getByTestId('start-room').click();
