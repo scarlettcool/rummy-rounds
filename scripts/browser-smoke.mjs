@@ -86,11 +86,26 @@ try {
     const page = await context.newPage();
     page.on('pageerror', e => pageErrors.push(e.message));
     page.on('console', msg => { if (msg.type() === 'error') logs.push(`browser: ${msg.text()}`); });
+    await page.route('**/api/health', route => route.abort());
     await page.goto(url);
     await page.getByRole('heading', { name: '选择你的牌桌' }).waitFor();
-    await page.waitForTimeout(1000);
+    await page.getByTestId('lobby-service').filter({ hasText: '离线练习可用' }).waitFor();
+    await noOverflow(page);
+    await screenshot(page, `${name}-lobby-offline`);
+    await page.unroute('**/api/health');
+    await page.getByTestId('retry-connection').click();
+    await page.getByTestId('lobby-service').filter({ hasText: '牌桌服务在线' }).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/');
     await noOverflow(page);
     await screenshot(page, `${name}-lobby`);
+    await page.route('**/api/games', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: '牌桌暂时繁忙，请重试。' }) }));
+    await page.getByTestId('start-challenge').click();
+    await page.getByRole('alert').filter({ hasText: '牌桌暂时繁忙，请重试。' }).waitFor();
+    await page.getByTestId('lobby-service').filter({ hasText: '牌桌服务在线' }).waitFor();
+    assert.equal(new URL(page.url()).pathname, '/');
+    await noOverflow(page);
+    await screenshot(page, `${name}-lobby-create-retry`);
+    await page.unroute('**/api/games');
     await page.getByTestId('start-room').click();
     await ready(page);
     assert.equal((await state(page)).handSize, 10);
@@ -325,7 +340,7 @@ try {
     await context.close();
   }
   assert.deepEqual(pageErrors, [], 'Unexpected browser errors');
-  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'disjoint suggestions', 'keyboard highlight', 'highlight and discard independence', 'challenge lobby entry', 'challenge goal and submission', 'lost completion response recovery', 'persisted completion after restart', 'duplicate completion rejected', 'failed next-room create preserves result', 'next challenge', 'landscape actions visible', 'no overflow'] }, null, 2));
+  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['lobby connection retry', 'failed room creation health recheck', 'create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'disjoint suggestions', 'keyboard highlight', 'highlight and discard independence', 'challenge lobby entry', 'challenge goal and submission', 'lost completion response recovery', 'persisted completion after restart', 'duplicate completion rejected', 'failed next-room create preserves result', 'next challenge', 'landscape actions visible', 'no overflow'] }, null, 2));
 } finally {
   await writeFile(resolve(output, 'server.log'), logs.join(''));
   await writeFile(resolve(output, 'page-errors.json'), JSON.stringify(pageErrors));

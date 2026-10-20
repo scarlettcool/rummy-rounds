@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import GameCard from '../components/GameCard.vue'
 import UiIcon from '../components/UiIcon.vue'
@@ -18,20 +18,33 @@ const showcase: Card[] = [
   { id: 'art-3', color: 'green', value: '9' },
 ]
 
-onMounted(async () => { service.value = await checkHealth() ? 'online' : 'offline' })
+let healthGeneration = 0
+let disposed = false
+async function refreshService() {
+  const generation = ++healthGeneration
+  service.value = 'checking'
+  const online = await checkHealth()
+  if (!disposed && generation === healthGeneration) service.value = online ? 'online' : 'offline'
+}
+onMounted(refreshService)
+onUnmounted(() => { disposed = true; healthGeneration++ })
 
 async function startRoom(mode: 'practice' | 'challenge' = 'practice') {
   if (joining.value) return
+  healthGeneration++
   joining.value = true
   error.value = ''
   try {
     const state = await createRoom(mode)
+    if (disposed) return
+    service.value = 'online'
     rememberRoom(state.id)
     recent.value = state.id
     await router.push({ name: 'rummy', query: { room: state.id } })
   } catch (e) {
-    service.value = 'offline'
+    if (disposed) return
     error.value = e instanceof Error ? e.message : '暂时无法创建房间。'
+    void refreshService()
   } finally { joining.value = false }
 }
 function practice() {
@@ -46,7 +59,7 @@ function practice() {
       <nav class="desktop-nav" aria-label="主导航"><span class="nav-current">游戏大厅</span><GameHelp /></nav>
       <div class="guest-profile"><span class="guest-avatar">C</span><span><b>Cloud Player</b><small>访客 · 单人模式</small></span></div>
     </header>
-    <div class="lobby-toolbar page-width"><span><i class="status-dot" :class="{ connected: service === 'online' }"></i>{{ service === 'checking' ? '正在连接…' : service === 'online' ? '牌桌服务在线' : '离线练习可用' }}</span><span class="quiet-label">轻松入门 · 随时开局</span></div>
+    <div class="lobby-toolbar page-width"><span role="status" data-testid="lobby-service"><i class="status-dot" :class="{ connected: service === 'online' }" aria-hidden="true"></i>{{ service === 'checking' ? '正在连接…' : service === 'online' ? '牌桌服务在线' : '离线练习可用' }}</span><button v-if="service !== 'online'" class="text-button" data-testid="retry-connection" :disabled="service === 'checking' || joining" @click="refreshService">{{ service === 'checking' ? '连接中…' : '重试连接' }}<UiIcon name="refresh" /></button><span v-else class="quiet-label">轻松入门 · 随时开局</span></div>
 
     <section class="lobby-hero page-width" aria-labelledby="lobby-title">
       <div class="hero-copy">

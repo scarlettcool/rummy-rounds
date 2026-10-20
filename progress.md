@@ -68,3 +68,10 @@ Use one backend process with a writable persistent volume and same-origin API pr
 - Proposed free play/rewarded ads and later cosmetics for evaluation; no SDK, dependency, payment, auth, save-schema, production deployment or spending changes. Multiplayer and full phase progression are not assumed mandatory for a deliberately scoped single-player launch.
 - Created active daily heartbeat `h5rummy` in this conversation. Review is targeted/read-only, quiet without meaningful change, and reports changed readiness, blockers, failed checks or decisions; it does not automatically deploy or spend.
 - Next: define the first-release single-player content and channel, then a measurable, recoverable invitation test before selecting monetization integration or paid acquisition. Existing unused public assets remain untouched.
+
+## Lobby availability recovery and explicit progress — 2026-10-21
+
+- User requested a gap list, continued improvement and progress in every report. Four stages remain: internal demonstration validated; invited testing pending; public commercial release blocked; profitability unverified. Documented this reporting convention in `RELEASE_READINESS.md`.
+- Local change: lobby health retry with accessible status; a rejected create triggers an actual health check instead of declaring the service offline. Generation guards keep late health responses from replacing newer state; leaving the lobby prevents a late room-creation response from navigating away from the user's current page.
+- Added unit regressions for retry deduplication, accurate service status after create rejection, stale health responses and navigation after unmount. Extended the four-viewport browser suite with offline/retry and rejected-create/retry screenshots and live API checks.
+- No save-schema, auth, payment, SDK, dependency or deployment changes. Existing unused public assets remain untouched. GitHub verification is pending for this increment; previous code evidence is not applied to the new changes.
