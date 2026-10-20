@@ -26,6 +26,8 @@ Original prompt: 继续h5rummy的开发
 - Local checks: 20 backend tests, 8 frontend tests. GitHub build and all browser flows passed: https://github.com/scarlettcool/rummy-rounds/actions/runs/39439297012
 - Downloaded and visually inspected desktop, 390px mobile, 320px mobile, landscape, native help dialog, and the develop-web-game client screenshot; no page errors were recorded.
 - Visual review follow-up: settle layout transitions before screenshots, keep later hand cards reachable while another is selected, replace the skip glyph with SVG, and fit landscape table/actions within a 390px-high viewport. The workflow reruns on the follow-up push.
+- Final code revision `78b6f4b` passed GitHub build, all 28 unit tests and the complete four-viewport browser suite: https://github.com/scarlettcool/rummy-rounds/actions/runs/39442248930
+- Visually inspected the final screenshots after the animation, selection and landscape fixes. The 844×390 table fits fully without scrolling; 320px and 390px hands remain reachable, including directly switching selection. Final screenshots/results are downloaded under `output/review/final-78b6f4b/` (ignored local QA artifacts).
 - GitHub fork authorized by the user: scarlettcool/rummy-rounds. Develop on a reviewable branch.
 
 ### Deployment boundary
