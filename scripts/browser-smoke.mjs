@@ -106,7 +106,9 @@ try {
     await noOverflow(page);
     assert.equal(await page.getByRole('alert').evaluate(element => {
       const rect = element.getBoundingClientRect();
-      return rect.top >= 0 && rect.bottom <= window.innerHeight && element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      const nav = document.querySelector('.mobile-nav')?.getBoundingClientRect();
+      const overlapsNav = nav && rect.right > nav.left && rect.left < nav.right && rect.bottom > nav.top && rect.top < nav.bottom;
+      return rect.top >= 0 && rect.bottom <= window.innerHeight && !overlapsNav;
     }), true, 'Lobby create error must be visible without scrolling or navigation overlap');
     await screenshot(page, `${name}-lobby-create-retry`);
     await page.unroute('**/api/games');
