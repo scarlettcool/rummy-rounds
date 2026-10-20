@@ -3,6 +3,8 @@ Rummy Club: a responsive single-player card lobby with a two-set challenge and f
 
 This build implements turn practice, saved rooms, natural-card grouping suggestions and a complete single-goal challenge loop. Full phase progression, special-card effects, tournament scoring, authenticated seats and multiplayer are not implemented.
 
+**Release status:** validated introductory single-player build; not yet ready for public commercial launch. Production operations, repeat-play validation, monetization and business metrics remain unverified. See [release and commercial readiness](RELEASE_READINESS.md) for evidence, blockers and acceptance gates.
+
 ## Single-player challenge
 
 Choose **开始组牌挑战** in the lobby to start a saved challenge. Collect two disjoint groups of three equal-number cards (colors may differ); six of the same number can form both groups. Submit while holding ten cards, either from a lucky initial deal or after discarding. The server chooses and validates the six cards, saves the result, and then locks the room. The result reports completed draw/discard turns; the next-game button creates a separate challenge without changing the previous result.
