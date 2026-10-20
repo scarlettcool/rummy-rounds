@@ -170,7 +170,14 @@ try {
     }
     await page.getByRole('button', { name: '玩法说明' }).first().click();
     await page.getByRole('dialog').waitFor();
+    const acknowledge = page.getByRole('dialog').getByRole('button', { name: '明白了' });
+    const acknowledgeBox = await acknowledge.boundingBox();
+    assert.ok(acknowledgeBox && acknowledgeBox.y >= 0 && acknowledgeBox.y + acknowledgeBox.height <= viewport.height, 'Help action is not visible');
     await screenshot(page, `${name}-help`);
+    await acknowledge.click();
+    assert.equal(await page.getByRole('dialog').isVisible(), false);
+    await page.getByRole('button', { name: '玩法说明' }).first().click();
+    await page.getByRole('dialog').waitFor();
     await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('dialog').isVisible(), false);
     await page.getByRole('button', { name: '返回大厅' }).click();

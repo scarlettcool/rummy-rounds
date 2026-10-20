@@ -19,7 +19,7 @@ const dialog = ref<HTMLDialogElement>()
       </ol>
       <p>组合参考：同点数字 3 张起，连续数字 4 张起（不限颜色，1 与 12 不首尾相连）。每张牌只用于一个建议，优先覆盖更多手牌。点击建议可高亮对应手牌，不会自动选中弃牌。</p>
       <p class="help-note">108 张牌：四色 1–12 数字牌各两张、8 张万能牌、4 张跳过牌。当前挑战只使用数字牌；万能牌暂不替代，跳过牌不触发效果，可正常弃掉。连号属于自由练习提示，不计入本次同点挑战。完整阶段赛、积分赛与多人对局尚未开放。</p>
-      <button class="primary-button" @click="dialog?.close()">开始练习<UiIcon name="arrow" /></button>
+      <div class="help-actions"><button class="primary-button" @click="dialog?.close()">明白了<UiIcon name="check" /></button></div>
     </div>
   </dialog>
 </template>
