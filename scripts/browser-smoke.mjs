@@ -47,7 +47,10 @@ async function ready(page) {
   });
 }
 async function screenshot(page, name) {
+  // Let card layout transitions finish before judging the rendered positions.
+  await page.waitForTimeout(400);
   await page.screenshot({ path: resolve(output, `${name}.png`), fullPage: true });
+  if (name.includes('lobby')) await page.screenshot({ path: resolve(output, `${name}-viewport.png`) });
 }
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, 'Horizontal page overflow');
@@ -86,7 +89,6 @@ try {
       const selected = await card.getAttribute('aria-label');
       await card.click({ position: { x: 8, y: 8 } });
       assert.equal(await card.getAttribute('aria-pressed'), 'true', `Unreachable card ${i}: ${selected}`);
-      await card.click({ position: { x: 8, y: 8 } });
     }
     await cards.nth(3).click({ position: { x: 8, y: 8 } });
     const selectedId = (await state(page)).selectedId;
@@ -94,6 +96,13 @@ try {
     assert.equal((await state(page)).selectedId, selectedId);
     await noOverflow(page);
     await screenshot(page, `${name}-table-selected`);
+    const sortedValues = (await state(page)).hand.map(card => Number(card.value) || 99);
+    assert.deepEqual(sortedValues, [...sortedValues].sort((a, b) => a - b), 'Sort order mismatch');
+    if (name === 'landscape') {
+      const actionBox = await page.getByTestId('discard-card').boundingBox();
+      assert.ok(actionBox && actionBox.y + actionBox.height <= viewport.height, 'Landscape action requires scrolling');
+      assert.equal(await page.evaluate(() => window.scrollY), 0, 'Landscape table is not visible with hand controls');
+    }
     await page.getByTestId('discard-card').click();
     await ready(page);
     const saved = await state(page);

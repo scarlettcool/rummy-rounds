@@ -120,6 +120,7 @@ h1, h2, p { margin: 0; }
 .card-corner i { display: block; margin-top: 2px; font-style: normal; font-size: 5px; text-align: center; }
 .card-corner.card-bottom { inset: auto 0 0 auto; transform: rotate(180deg); }
 .card-value { position: absolute; inset: 0; display: grid; place-items: center; font: italic 48px/1 Georgia, serif; letter-spacing: -.06em; text-shadow: 0 1px #fff; }
+.skip-symbol { width: 65%; max-height: 70%; fill: none; stroke: currentColor; stroke-width: 2.8; }
 .game-card.selected { z-index: 2; transform: translateY(-16px); box-shadow: 0 0 0 2px var(--gold), 0 12px 18px #0006; }
 
 /* Table */
@@ -173,10 +174,10 @@ h1, h2, p { margin: 0; }
 .sort-button .ui-icon { width: 15px; height: 15px; }
 .sort-button:disabled { opacity: .4; }
 .hand-row { --card-width: 76px; display: flex; max-width: 960px; min-height: 108px; margin: 0 auto; }
-.hand-slot { position: relative; flex: 1; min-width: 0; }
+.hand-slot { position: relative; z-index: 1; flex: 1; min-width: 0; }
 .hand-slot:last-child { flex: 0 0 var(--card-width); }
 .hand-slot .game-card { width: var(--card-width); }
-.hand-slot.is-selected { z-index: 3; }
+.hand-slot.is-selected { z-index: 1; }
 .hand-slot.just-drawn:not(.is-selected) { z-index: 1; }
 .hand-slot.just-drawn .game-card:not(.selected) { box-shadow: 0 0 0 1px #e3c98a, 0 4px 12px #0005; }
 .hand-slot .game-card:hover:not(:disabled):not(.selected) { transform: translateY(-5px); }
@@ -339,4 +340,46 @@ h1, h2, p { margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+@media (min-width: 651px) and (max-height: 600px) {
+  .table-shell { padding-bottom: 8px; }
+  .table-header { min-height: 40px; }
+  .table-title h1 { margin-top: 2px; font-size: 12px; }
+  .table-title .eyebrow { font-size: 6px; }
+  .table-header > .help-trigger, .table-header > .back-button { min-height: 36px; font-size: 10px; }
+  .table-toolbar { min-height: 26px; }
+  .table-toolbar .text-button { min-height: 26px; }
+  .table-stage { height: 118px; border-width: 4px; border-radius: 46px; }
+  .felt-lines { inset: 7px; border-radius: 35px; }
+  .table-round { left: 35px; top: 34px; transform: none; text-align: left; }
+  .table-round .eyebrow { font-size: 6px; }
+  .table-round b { margin-top: 5px; font-size: 10px; }
+  .table-stamp, .table-edge-note, .practice-label { display: none; }
+  .pile-area { top: 10px; gap: 18px; }
+  .pile-group { gap: 5px; }
+  .pile-group .game-card, .deck-stack, .empty-card { width: 48px; height: 68px; border-radius: 5px; }
+  .pile-group .card-value { font-size: 30px; }
+  .pile-group .card-corner { font-size: 10px; padding: 3px; }
+  .pile-caption { font-size: 8px; }
+  .deck-stack { padding: 3px; }
+  .deck-pattern > span { width: 24px; height: 30px; font-size: 20px; }
+  .deck-pattern > small { display: none; }
+  .pile-divider { width: 12px; margin-top: -16px; }
+  .table-coach { left: auto; right: 28px; bottom: 39px; max-width: 180px; font-size: 9px; }
+  .hand-panel { margin-top: 12px; }
+  .hand-header { min-height: 28px; margin-bottom: 17px; }
+  .player-avatar { width: 28px; height: 28px; font-size: 15px; }
+  .player-chip b { font-size: 10px; }
+  .player-chip small { display: none; }
+  .sort-button { min-height: 28px; padding-block: 3px; font-size: 9px; }
+  .hand-row { --card-width: 48px; max-width: 670px; min-height: 68px; }
+  .hand-slot .game-card { height: 68px; border-radius: 5px; }
+  .hand-slot .card-value { font-size: 29px; }
+  .hand-slot .card-corner { font-size: 11px; padding: 3px 4px; }
+  .hand-slot .game-card.selected { transform: translateY(-10px); }
+  .hand-actions { margin-top: 10px; padding-top: 8px; }
+  .action-buttons > button { min-height: 36px; padding-block: 6px; font-size: 11px; }
+  .action-caption b { margin-top: 3px; font-size: 10px; }
+  .table-footer { display: none; }
 }

@@ -23,7 +23,9 @@ Original prompt: 继续h5rummy的开发
 - Automate: GitHub workflow now includes responsive screenshots and recovery smoke tests. Playwright stays in an isolated runner directory; no application dependency changes.
 - Reuse: GameCard, GameHelp and API validation are local reusable modules. A larger framework or skill extraction is deferred until another game needs these patterns.
 - Removed implicit online-to-offline action fallback. A failed request blocks actions until an explicit successful resync. Offline mode must be selected by the user.
-- Local checks: 20 backend tests, 8 frontend tests. GitHub build and visual QA pending.
+- Local checks: 20 backend tests, 8 frontend tests. GitHub build and all browser flows passed: https://github.com/scarlettcool/rummy-rounds/actions/runs/39439297012
+- Downloaded and visually inspected desktop, 390px mobile, 320px mobile, landscape, native help dialog, and the develop-web-game client screenshot; no page errors were recorded.
+- Visual review follow-up: settle layout transitions before screenshots, keep later hand cards reachable while another is selected, replace the skip glyph with SVG, and fit landscape table/actions within a 390px-high viewport. The workflow reruns on the follow-up push.
 - GitHub fork authorized by the user: scarlettcool/rummy-rounds. Develop on a reviewable branch.
 
 ### Deployment boundary
