@@ -1,0 +1,80 @@
+name: Rummy Club Build & Visual QA
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rummy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Build, regression tests & browser screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CYPRESS_INSTALL_BINARY: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+      - name: Backend build and regression tests
+        working-directory: backend
+        run: |
+          npm run build
+          npm test
+      - name: Frontend build and regression tests
+        working-directory: frontend
+        run: |
+          npm run build
+          npm run test:unit -- --run
+      - name: Install isolated browser tooling on the runner
+        run: |
+          npm install --prefix "$RUNNER_TEMP/rummy-browser" --ignore-scripts --no-audit --no-fund playwright@1.56.1
+          node "$RUNNER_TEMP/rummy-browser/node_modules/playwright/cli.js" install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/rummy-browser/node_modules/playwright/index.mjs" >> "$GITHUB_ENV"
+      - name: Live API, recovery flows and responsive screenshots
+        run: node scripts/browser-smoke.mjs
+      - name: Run the develop-web-game action client
+        env:
+          API_PROXY_TARGET: http://127.0.0.1:5050
+        run: |
+          npm run preview --prefix frontend -- --host 127.0.0.1 --port 4175 &
+          for attempt in $(seq 1 30); do curl -fsS http://127.0.0.1:4175/ > /dev/null && break; sleep 1; done
+          node scripts/web-game-client.mjs --url 'http://127.0.0.1:4175/rummy?room=practice' --click-selector '[data-testid="draw-card"]' --actions-json '{"steps":[{"buttons":[],"frames":2}]}' --iterations 1 --screenshot-dir output/skill
+          if find output/skill -name 'errors-*.json' | read; then cat output/skill/errors-*.json; exit 1; fi
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: rummy-frontend-build
+          path: frontend/dist
+      - name: Upload browser screenshots and validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rummy-visual-validation
+          path: |
+            output/validation/*.png
+            output/validation/*state.json
+            output/validation/result.json
+            output/validation/server.log
+            output/validation/page-errors.json
+            output/skill
+          if-no-files-found: warn
+          retention-days: 14

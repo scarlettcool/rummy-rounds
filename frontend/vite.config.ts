@@ -10,6 +10,12 @@ export default defineConfig({
     vue(),
     vueDevTools(),
   ],
+  server: {
+    proxy: { '/api': process.env.API_PROXY_TARGET || 'http://127.0.0.1:5000' },
+  },
+  preview: {
+    proxy: { '/api': process.env.API_PROXY_TARGET || 'http://127.0.0.1:5000' },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
