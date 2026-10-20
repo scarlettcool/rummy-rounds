@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
 import { isDeepStrictEqual } from 'node:util';
@@ -54,6 +54,22 @@ async function screenshot(page, name) {
 }
 async function noOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false, 'Horizontal page overflow');
+}
+async function prepareChallenge(id) {
+  // Test-only save fixture using real physical cards; no seeding endpoint ships.
+  const path = resolve(output, 'rooms', `${id}.json`);
+  const room = JSON.parse(await readFile(path, 'utf8'));
+  const pool = [...room.hand, ...room.drawPile, ...room.discardPile];
+  const take = value => {
+    const index = pool.findIndex(card => card.value === String(value));
+    assert.notEqual(index, -1);
+    return pool.splice(index, 1)[0];
+  };
+  room.hand = [1, 1, 1, 2, 2, 3, 4, 5, 6, 7].map(take);
+  const next = take(2);
+  room.discardPile = [pool.shift()];
+  room.drawPile = [next, ...pool];
+  await writeFile(path, JSON.stringify(room));
 }
 try {
   await startBackend();
@@ -171,6 +187,86 @@ try {
     assert.equal(practiceRequests, 0);
     await writeFile(resolve(output, `${name}-state.json`), JSON.stringify(await state(page), null, 2));
 
+    await page.getByRole('button', { name: '返回大厅' }).click();
+    await page.getByTestId('start-challenge').click();
+    await ready(page);
+    const challengeId = (await state(page)).room;
+    assert.equal((await state(page)).challenge.status, 'active');
+    await prepareChallenge(challengeId);
+    await page.reload();
+    await ready(page);
+    assert.equal((await state(page)).suggestions.length, 1);
+    assert.equal(await page.getByTestId('complete-challenge').isDisabled(), true);
+    await screenshot(page, `${name}-challenge-goal`);
+    await page.getByTestId('draw-card').click();
+    await ready(page);
+    assert.equal((await state(page)).handSize, 11);
+    assert.equal(await page.getByTestId('complete-challenge').count(), 0, 'Cannot submit before discarding');
+    const dropIndex = (await state(page)).hand.findIndex(card => card.value === '7');
+    await page.locator('.hand-row .game-card').nth(dropIndex).click({ position: { x: 8, y: 8 } });
+    await page.getByTestId('discard-card').click();
+    await ready(page);
+    assert.equal((await state(page)).suggestions.length, 2);
+    assert.equal(await page.getByTestId('complete-challenge').isDisabled(), false);
+
+    if (name === 'desktop') {
+      // Save succeeds, but the client loses the response: never invent a win.
+      await page.route(`**/api/games/${challengeId}/complete`, async route => {
+        const response = await route.fetch();
+        assert.equal(response.ok(), true);
+        await route.abort();
+      });
+      await page.getByTestId('complete-challenge').click();
+      await page.getByRole('alert').waitFor();
+      assert.equal((await state(page)).blocked, true);
+      assert.equal(await page.locator('.challenge-result').count(), 0);
+      await page.unroute(`**/api/games/${challengeId}/complete`);
+      await page.locator('.notice button').click();
+      await ready(page);
+    } else {
+      await page.getByTestId('complete-challenge').click();
+      await ready(page);
+    }
+    const result = (await state(page)).challenge;
+    assert.equal(result.status, 'completed');
+    assert.equal(result.turnsPlayed, 1);
+    assert.equal(new Set(result.groups.flat()).size, 6);
+    assert.equal(await page.locator('.result-group .game-card').count(), 6);
+    assert.equal(await page.getByTestId('draw-card').count(), 0);
+    assert.equal(await page.getByTestId('discard-card').count(), 0);
+    assert.equal(await page.locator('.hand-row .game-card:enabled').count(), 0);
+    await noOverflow(page);
+    await screenshot(page, `${name}-challenge-result`);
+    if (name === 'landscape') {
+      const box = await page.getByTestId('next-challenge').boundingBox();
+      assert.ok(box && box.y + box.height <= viewport.height, 'Challenge result actions require scrolling');
+      assert.equal(await page.evaluate(() => window.scrollY), 0);
+    }
+    if (name === 'desktop') {
+      await stop(backend);
+      await startBackend();
+    }
+    await page.reload();
+    await ready(page);
+    assert.deepEqual((await state(page)).challenge, result, 'Reload or restart changed the saved result');
+    const duplicate = await fetch(`${backendUrl}/api/games/${challengeId}/complete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: (await state(page)).revision }),
+    });
+    assert.equal(duplicate.status, 409, 'Finished room accepted a repeated completion');
+    await page.route('**/api/games', route => route.abort());
+    await page.getByTestId('next-challenge').click();
+    await page.getByRole('alert').waitFor();
+    assert.equal((await state(page)).challenge.status, 'completed', 'Failed next-room create erased the result');
+    await page.unroute('**/api/games');
+    await page.getByTestId('next-challenge').click();
+    await ready(page);
+    assert.notEqual((await state(page)).room, challengeId);
+    assert.equal((await state(page)).challenge.status, 'active');
+    const previous = await (await fetch(`${backendUrl}/api/games/${challengeId}`)).json();
+    assert.deepEqual(previous.challenge, result, 'Next room changed the previous result');
+    await writeFile(resolve(output, `${name}-challenge-state.json`), JSON.stringify(await state(page), null, 2));
+
     // A deterministic display fixture exercises suggestions in every viewport;
     // the create/save/recovery flows above still use the live backend.
     const advice = await context.newPage();
@@ -222,7 +318,7 @@ try {
     await context.close();
   }
   assert.deepEqual(pageErrors, [], 'Unexpected browser errors');
-  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'disjoint suggestions', 'keyboard highlight', 'highlight and discard independence', 'landscape actions visible', 'no overflow'] }, null, 2));
+  await writeFile(resolve(output, 'result.json'), JSON.stringify({ passed: true, viewports: 4, checks: ['create', 'draw', 'all cards reachable', 'selection and sorting', 'discard', 'refresh', 'server restart', 'network failure recovery', 'stale tab conflict', 'dialog Escape', 'resume', 'explicit offline mode', 'disjoint suggestions', 'keyboard highlight', 'highlight and discard independence', 'challenge lobby entry', 'challenge goal and submission', 'lost completion response recovery', 'persisted completion after restart', 'duplicate completion rejected', 'failed next-room create preserves result', 'next challenge', 'landscape actions visible', 'no overflow'] }, null, 2));
 } finally {
   await writeFile(resolve(output, 'server.log'), logs.join(''));
   await writeFile(resolve(output, 'page-errors.json'), JSON.stringify(pageErrors));

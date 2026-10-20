@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import GameCard from '../components/GameCard.vue'
 import UiIcon from '../components/UiIcon.vue'
 import GameHelp from '../components/GameHelp.vue'
-import { ApiError, readRoom, roomAction } from '../game/api'
-import { cardLabel, practiceRoom, rememberRoom, shuffled, type RoomState } from '../game/room'
-import { analyzeHand } from '../game/handAnalysis'
+import ChallengeResult from '../components/ChallengeResult.vue'
+import { ApiError, createRoom, readRoom, roomAction } from '../game/api'
+import { cardLabel, practiceRoom, rememberRoom, shuffled, type Card, type RoomState } from '../game/room'
+import { analyzeHand, type HandGroup } from '../game/handAnalysis'
+import { challengeGroups } from '@rules/challenge'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,14 +33,28 @@ const hand = computed(() => {
   return cards
 })
 const unavailable = computed(() => loading.value || busy.value || blocked.value || !state.value)
+const challenge = computed(() => state.value?.challenge)
+const completed = computed(() => challenge.value?.status === 'completed' ? challenge.value : null)
+const actionsUnavailable = computed(() => unavailable.value || !!completed.value)
 const analysis = computed(() => analyzeHand(state.value?.player.hand ?? []))
+const groups = computed<HandGroup[]>(() => {
+  if (!challenge.value) return analysis.value.groups
+  const currentHand = state.value?.player.hand ?? []
+  const ids = completed.value?.groups ?? challengeGroups(currentHand)
+  return ids.map(group => {
+    const cards = group.map(id => currentHand.find(card => card.id === id)).filter((card): card is Card => !!card)
+    return { kind: 'set', cards, label: `同点 ${cards[0]?.value} · 3 张` }
+  })
+})
 const highlightedIds = computed(() => new Set(
-  activeGroup.value === null ? [] : analysis.value.groups[activeGroup.value]?.cards.map(c => c.id) ?? [],
+  activeGroup.value === null ? [] : groups.value[activeGroup.value]?.cards.map(c => c.id) ?? [],
 ))
 const hint = computed(() => {
   if (loading.value) return '正在准备你的牌桌…'
   if (blocked.value) return '重新同步后继续，当前牌局已保留'
   if (busy.value) return '正在保存这一步…'
+  if (completed.value) return '挑战结果已保存'
+  if (challenge.value && !state.value?.player.hasDrawn && groups.value.length === 2) return '两组已就绪，提交组合完成挑战'
   if (selectedId.value) return '已选中一张手牌，确认后弃牌'
   return state.value?.player.hasDrawn ? '选择一张手牌，再点击弃牌' : '从牌堆摸一张，开始本回合'
 })
@@ -81,13 +97,14 @@ async function load() {
 }
 
 function select(id: string) {
-  if (unavailable.value || !state.value?.player.hasDrawn) return
+  if (actionsUnavailable.value || !state.value?.player.hasDrawn) return
   selectedId.value = selectedId.value === id ? null : id
 }
 
-async function act(action: 'draw' | 'discard') {
+async function act(action: 'draw' | 'discard' | 'complete') {
   const snapshot = state.value
-  if (unavailable.value || !snapshot) return
+  if (actionsUnavailable.value || !snapshot) return
+  if (action === 'complete' && (offline.value || !challenge.value || snapshot.player.hasDrawn || groups.value.length !== 2)) return
   if (action === 'draw' && snapshot.player.hasDrawn) return
   if (action === 'discard' && (!snapshot.player.hasDrawn || !selectedId.value)) return
   error.value = ''
@@ -128,13 +145,28 @@ async function act(action: 'draw' | 'discard') {
     lastDrawnId.value = action === 'draw' ? next.player.hand[next.player.hand.length - 1]?.id ?? '' : ''
   } catch (e) {
     if (current !== generation) return
-    if (e instanceof ApiError && e.status === 409 && e.state?.id === roomId.value) {
+    if (e instanceof ApiError && [409, 422].includes(e.status) && e.state?.id === roomId.value) {
       apply(e.state)
       error.value = e.message
     } else {
       blocked.value = true
       error.value = e instanceof Error ? e.message : '操作未完成，请重新同步。'
     }
+  } finally { if (current === generation) busy.value = false }
+}
+
+async function nextChallenge() {
+  if (unavailable.value || !completed.value) return
+  busy.value = true
+  error.value = ''
+  const current = generation
+  try {
+    const next = await createRoom('challenge')
+    if (current !== generation) return
+    rememberRoom(next.id)
+    await router.push({ name: 'rummy', query: { room: next.id } })
+  } catch (e) {
+    if (current === generation) error.value = e instanceof Error ? e.message : '下一局创建失败，当前结果已保存，请重试。'
   } finally { if (current === generation) busy.value = false }
 }
 
@@ -153,13 +185,13 @@ watch(roomId, () => {
 }, { immediate: true })
 
 const renderGameToText = () => JSON.stringify({
-  mode: offline.value ? 'practice' : 'saved-practice', room: roomId.value,
+  mode: challenge.value ? 'challenge' : offline.value ? 'practice' : 'saved-practice', room: roomId.value,
   handSize: state.value?.player.hand.length ?? 0,
   hand: hand.value, drawPile: state.value?.drawPileCount ?? 0,
   discard: state.value?.discardPile, hasDrawn: state.value?.player.hasDrawn ?? false,
   turn: state.value?.turn ?? 1, revision: state.value?.revision ?? 0,
   selectedId: selectedId.value, loading: loading.value, busy: busy.value, blocked: blocked.value,
-  suggestions: analysis.value.groups, coveredCards: analysis.value.covered,
+  suggestions: groups.value, coveredCards: analysis.value.covered, challenge: challenge.value,
   highlightedIds: [...highlightedIds.value],
 })
 const advanceTime = (_ms: number) => undefined
@@ -176,41 +208,54 @@ onBeforeUnmount(() => {
   <main class="table-shell">
     <header class="table-header page-width">
       <button class="back-button" @click="router.push('/')"><UiIcon name="arrow" />返回大厅</button>
-      <div class="table-title"><span class="eyebrow">RUMMY CLUB</span><h1>经典练习桌</h1></div>
+      <div class="table-title"><span class="eyebrow">RUMMY CLUB</span><h1>{{ challenge ? '数字组牌挑战' : '经典练习桌' }}</h1></div>
       <GameHelp />
     </header>
-    <div class="table-toolbar page-width"><span><i class="status-dot" :class="{ connected: !offline && !blocked && !loading }"></i>{{ loading ? '正在同步' : offline ? '离线练习 · 本次不保存' : blocked ? '等待重新同步' : '在线练习 · 自动保存' }}</span><button v-if="!offline" class="text-button" :disabled="busy || loading" @click="load"><UiIcon name="refresh" />重新同步</button><span v-else class="quiet-label">单人模式</span></div>
+    <div class="table-toolbar page-width"><span><i class="status-dot" :class="{ connected: !offline && !blocked && !loading }"></i>{{ loading ? '正在同步' : offline ? '离线练习 · 本次不保存' : blocked ? '等待重新同步' : challenge ? '在线挑战 · 进度与结果保存' : '在线练习 · 自动保存' }}</span><button v-if="!offline" class="text-button" :disabled="busy || loading" @click="load"><UiIcon name="refresh" />重新同步</button><span v-else class="quiet-label">单人模式</span></div>
     <div v-if="error" class="notice error page-width" role="alert"><span>{{ error }}</span><button class="text-button" :disabled="busy || loading" @click="load">重新同步<UiIcon name="refresh" /></button></div>
 
-    <section class="table-stage page-width" aria-label="练习牌桌">
+    <section class="table-stage page-width" :aria-label="completed ? '挑战结果' : '练习牌桌'">
       <div class="felt-lines" aria-hidden="true"></div>
+      <ChallengeResult v-if="completed && state" :result="completed" :hand="state.player.hand" />
+      <template v-else>
       <div class="table-stamp" aria-hidden="true"><span>R</span><small>RUMMY CLUB</small></div>
-      <div class="table-round"><span class="eyebrow">PRACTICE TABLE</span><b>第 {{ state?.turn ?? 1 }} 回合</b></div>
-      <div class="practice-label"><span class="tiny-diamond"></span>单人操作练习</div>
+      <div class="table-round"><span class="eyebrow">{{ challenge ? 'TWO SET CHALLENGE' : 'PRACTICE TABLE' }}</span><b>第 {{ state?.turn ?? 1 }} 回合</b></div>
+      <div class="practice-label"><span class="tiny-diamond"></span>{{ challenge ? `目标：两组同点 · ${groups.length}/2 组` : '单人操作练习' }}</div>
       <div class="pile-area">
-        <div class="pile-group"><button class="deck-stack" aria-label="从牌堆摸一张牌" :disabled="unavailable || state?.player.hasDrawn" @click="act('draw')"><span class="deck-pattern"><span>R</span><small>RUMMY CLUB</small></span></button><span class="pile-caption">摸牌堆 <b>{{ state?.drawPileCount ?? '—' }}</b></span></div>
+        <div class="pile-group"><button class="deck-stack" aria-label="从牌堆摸一张牌" :disabled="actionsUnavailable || state?.player.hasDrawn" @click="act('draw')"><span class="deck-pattern"><span>R</span><small>RUMMY CLUB</small></span></button><span class="pile-caption">摸牌堆 <b>{{ state?.drawPileCount ?? '—' }}</b></span></div>
         <span class="pile-divider" aria-hidden="true"></span>
         <div class="pile-group"><GameCard v-if="state?.discardPile" :card="state.discardPile" disabled /><span v-else class="empty-card">等待发牌</span><span class="pile-caption">弃牌堆</span></div>
       </div>
       <div class="table-coach" role="status" aria-live="polite"><span class="turn-indicator" :class="{ paused: unavailable }"></span>{{ hint }}</div>
       <span class="table-edge-note">DRAW · SELECT · DISCARD</span>
+      </template>
     </section>
 
     <section class="hand-panel page-width" aria-label="你的手牌">
-      <div class="hand-header"><div class="player-chip"><span class="player-avatar">C</span><span><b>你的手牌 <span class="hand-count" data-testid="hand-count">{{ hand.length }}</span></b><small>{{ state?.player.hasDrawn ? '已摸牌，选择一张弃掉' : '准备好就开始这一回合' }}</small></span></div><button class="sort-button" :disabled="unavailable" @click="cycleSort"><UiIcon name="sort" />{{ sortBy === 'number' ? '按数字' : sortBy === 'color' ? '按颜色' : '理牌' }}</button></div>
+      <div class="hand-header"><div class="player-chip"><span class="player-avatar">C</span><span><b>你的手牌 <span class="hand-count" data-testid="hand-count">{{ hand.length }}</span></b><small>{{ completed ? '本局已完成，手牌仅供查看' : state?.player.hasDrawn ? '已摸牌，选择一张弃掉' : '准备好就开始这一回合' }}</small></span></div><button class="sort-button" :disabled="unavailable" @click="cycleSort"><UiIcon name="sort" />{{ sortBy === 'number' ? '按数字' : sortBy === 'color' ? '按颜色' : '理牌' }}</button></div>
       <TransitionGroup tag="div" name="hand-card" class="hand-row" :style="{ '--hand-count': Math.max(hand.length, 1) }">
-        <div v-for="card in hand" :key="card.id" class="hand-slot" :class="{ 'is-selected': selectedId === card.id, 'just-drawn': lastDrawnId === card.id, 'in-suggestion': highlightedIds.has(card.id) }"><GameCard :card="card" :selected="selectedId === card.id" :disabled="unavailable || !state?.player.hasDrawn" @select="select(card.id)" /></div>
+        <div v-for="card in hand" :key="card.id" class="hand-slot" :class="{ 'is-selected': selectedId === card.id, 'just-drawn': lastDrawnId === card.id, 'in-suggestion': highlightedIds.has(card.id) }"><GameCard :card="card" :selected="selectedId === card.id" :disabled="actionsUnavailable || !state?.player.hasDrawn" @select="select(card.id)" /></div>
       </TransitionGroup>
-      <div class="hand-insight" aria-label="组合参考">
-        <span class="insight-title">组合参考<small>仅数字牌</small></span>
+      <div class="hand-insight" :aria-label="challenge ? '目标组合' : '组合参考'">
+        <span class="insight-title">{{ challenge ? '目标组合' : '组合参考' }}<small>仅数字牌</small></span>
         <div class="insight-groups">
-          <span v-if="!analysis.groups.length" class="insight-empty">{{ unavailable ? '同步完成后查看' : '暂无组合 · 同点 3 张起，连号 4 张起' }}</span>
-          <button v-for="(group, index) in analysis.groups" :key="index" class="insight-group" :disabled="unavailable" :aria-pressed="activeGroup === index" :aria-label="`${group.label}，点击高亮对应手牌`" @click="activeGroup = activeGroup === index ? null : index">{{ group.label }}</button>
+          <span v-if="!groups.length" class="insight-empty">{{ unavailable ? '同步完成后查看' : challenge ? '凑齐两组，每组 3 张同点数字牌' : '暂无组合 · 同点 3 张起，连号 4 张起' }}</span>
+          <button v-for="(group, index) in groups" :key="index" class="insight-group" :disabled="unavailable" :aria-pressed="activeGroup === index" :aria-label="`${group.label}，点击高亮对应手牌`" @click="activeGroup = activeGroup === index ? null : index">{{ group.label }}</button>
         </div>
-        <span v-if="analysis.covered" class="insight-coverage" role="status">{{ analysis.covered }}/{{ hand.length }} 张</span>
+        <span v-if="challenge || analysis.covered" class="insight-coverage" role="status">{{ challenge ? `${groups.length}/2 组` : `${analysis.covered}/${hand.length} 张` }}</span>
       </div>
-      <div class="hand-actions"><div class="action-caption" aria-live="polite"><span class="eyebrow">{{ selectedId ? 'SELECTED CARD' : 'YOUR TURN' }}</span><b>{{ selectedId ? selectedLabel : state?.player.hasDrawn ? '选择一张手牌' : '先摸一张牌' }}</b></div><div class="action-buttons"><button class="secondary-button" data-testid="draw-card" :disabled="unavailable || state?.player.hasDrawn" @click="act('draw')"><UiIcon name="cards" />{{ busy && !state?.player.hasDrawn ? '保存中…' : '摸牌' }}</button><button class="primary-button" data-testid="discard-card" :disabled="unavailable || !state?.player.hasDrawn || !selectedId" @click="act('discard')">{{ busy && state?.player.hasDrawn ? '保存中…' : '弃牌' }}<UiIcon name="arrow" /></button></div></div>
+      <div class="hand-actions">
+        <div class="action-caption" aria-live="polite"><span class="eyebrow">{{ completed ? 'WELL PLAYED' : selectedId ? 'SELECTED CARD' : 'YOUR TURN' }}</span><b>{{ completed ? '结果已保存' : selectedId ? selectedLabel : state?.player.hasDrawn ? '选择一张手牌' : challenge && groups.length === 2 ? '两组已就绪' : '先摸一张牌' }}</b></div>
+        <div class="action-buttons">
+          <button v-if="completed" class="primary-button" data-testid="next-challenge" :disabled="unavailable" @click="nextChallenge">{{ busy ? '准备中…' : '下一局' }}<UiIcon name="arrow" /></button>
+          <template v-else>
+            <button class="secondary-button" data-testid="draw-card" :disabled="actionsUnavailable || state?.player.hasDrawn" @click="act('draw')"><UiIcon name="cards" />{{ busy && !state?.player.hasDrawn ? '保存中…' : '摸牌' }}</button>
+            <button v-if="challenge && !state?.player.hasDrawn" class="primary-button" data-testid="complete-challenge" :disabled="unavailable || groups.length !== 2" @click="act('complete')">{{ busy ? '保存中…' : '提交组合' }}<UiIcon name="check" /></button>
+            <button v-else class="primary-button" data-testid="discard-card" :disabled="actionsUnavailable || !state?.player.hasDrawn || !selectedId" @click="act('discard')">{{ busy && state?.player.hasDrawn ? '保存中…' : '弃牌' }}<UiIcon name="arrow" /></button>
+          </template>
+        </div>
+      </div>
     </section>
-    <footer class="table-footer page-width"><span>组合提示仅供参考 · 组牌提交、特殊牌效果与计分尚未开放</span><span v-if="!offline">进度在服务端保存</span></footer>
+    <footer class="table-footer page-width"><span>{{ challenge ? '数字牌挑战 · 不限颜色 · 同一张牌只能使用一次 · 万能牌暂不替代' : '自由操作练习 · 可从大厅进入有明确目标的组牌挑战' }}</span><span v-if="!offline">进度在服务端保存</span></footer>
   </main>
 </template>

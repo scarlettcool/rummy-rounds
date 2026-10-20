@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, openSync, writeFileSync, fsyncSync, closeSync,
 import { join } from 'node:path';
 import { dealHands, generateDeck, shuffle } from './engine/deck';
 import { Card } from './engine/types/card.types';
+import { ChallengeState, isChallengeState } from './rules/challenge';
 
 export interface RoomState {
   id: string;
@@ -13,9 +14,10 @@ export interface RoomState {
   hand: Card[];
   discardPile: Card[];
   hasDrawn: boolean;
+  challenge?: ChallengeState;
 }
 
-export function newRoom(): RoomState {
+export function newRoom(mode: 'practice' | 'challenge' = 'practice'): RoomState {
   const { hands, remainingDeck } = dealHands(shuffle(generateDeck()), 1);
   return {
     id: `room-${randomUUID()}`,
@@ -26,6 +28,7 @@ export function newRoom(): RoomState {
     discardPile: [remainingDeck.shift()!],
     drawPile: remainingDeck,
     hasDrawn: false,
+    ...(mode === 'challenge' ? { challenge: { goal: 'two-sets' as const, status: 'active' as const } } : {}),
   };
 }
 
@@ -38,6 +41,7 @@ export function roomView(room: RoomState) {
     drawPileCount: room.drawPile.length,
     discardPile: room.discardPile.at(-1) ?? null,
     player: { id: 'local-player', name: '你', hand: room.hand, hasDrawn: room.hasDrawn },
+    ...(room.challenge ? { challenge: room.challenge } : {}),
   };
 }
 
@@ -70,7 +74,9 @@ export class FileRoomRepository implements RoomRepository {
         typeof room.hasDrawn !== 'boolean' || room.hand.length !== (room.hasDrawn ? 11 : 10) ||
         room.discardPile.length < 1 || cards.length !== 108 ||
         new Set(cards.map(card => card.id)).size !== 108 ||
-        cards.some(card => !deckIds.has(card.id) || !card.id.startsWith(`${card.color}-${card.value}-`))) {
+        cards.some(card => !deckIds.has(card.id) || !card.id.startsWith(`${card.color}-${card.value}-`)) ||
+        (room.challenge !== undefined && (!isChallengeState(room.challenge, room.hand, room.hasDrawn, room.turn) ||
+          (room.challenge.status === 'completed' && room.revision === 0)))) {
       throw new Error('Invalid room snapshot');
     }
     return room;

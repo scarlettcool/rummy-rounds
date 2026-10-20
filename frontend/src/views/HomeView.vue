@@ -20,12 +20,12 @@ const showcase: Card[] = [
 
 onMounted(async () => { service.value = await checkHealth() ? 'online' : 'offline' })
 
-async function startRoom() {
+async function startRoom(mode: 'practice' | 'challenge' = 'practice') {
   if (joining.value) return
   joining.value = true
   error.value = ''
   try {
-    const state = await createRoom()
+    const state = await createRoom(mode)
     rememberRoom(state.id)
     recent.value = state.id
     await router.push({ name: 'rummy', query: { room: state.id } })
@@ -44,7 +44,7 @@ function practice() {
     <header class="club-header page-width">
       <a class="brand" href="/" aria-label="牌友 Rummy 大厅"><span class="brand-emblem" aria-hidden="true">R</span><span>牌友<span class="brand-caption">RUMMY CLUB</span></span></a>
       <nav class="desktop-nav" aria-label="主导航"><span class="nav-current">游戏大厅</span><GameHelp /></nav>
-      <div class="guest-profile"><span class="guest-avatar">C</span><span><b>Cloud Player</b><small>访客 · 练习模式</small></span></div>
+      <div class="guest-profile"><span class="guest-avatar">C</span><span><b>Cloud Player</b><small>访客 · 单人模式</small></span></div>
     </header>
     <div class="lobby-toolbar page-width"><span><i class="status-dot" :class="{ connected: service === 'online' }"></i>{{ service === 'checking' ? '正在连接…' : service === 'online' ? '牌桌服务在线' : '离线练习可用' }}</span><span class="quiet-label">轻松入门 · 随时开局</span></div>
 
@@ -52,9 +52,9 @@ function practice() {
       <div class="hero-copy">
         <span class="eyebrow"><span class="short-line"></span> THE CARD ROOM</span>
         <h1 id="lobby-title">Rummy<span>你的专属牌桌。</span></h1>
-        <p>从一轮摸牌开始，找到自己的出牌节奏。</p>
-        <div class="hero-actions"><button class="primary-button large" :disabled="joining" data-testid="start-room" @click="startRoom">{{ joining ? '正在准备牌桌…' : '开始新牌局' }}<UiIcon name="arrow" /></button><button class="text-button" :disabled="joining" @click="practice">先离线练习</button></div>
-        <div class="hero-details"><span><UiIcon name="check" />单人练习</span><span><UiIcon name="cloud" />在线牌局自动保存</span></div>
+        <p>凑齐两组三张同点数字牌，完成你的第一场挑战。</p>
+        <div class="hero-actions"><button class="primary-button large" :disabled="joining" data-testid="start-challenge" @click="startRoom('challenge')">{{ joining ? '正在准备牌桌…' : '开始组牌挑战' }}<UiIcon name="arrow" /></button><button class="text-button" :disabled="joining" @click="practice">先离线练习</button></div>
+        <div class="hero-details"><span><UiIcon name="check" />单人组牌挑战</span><span><UiIcon name="cloud" />进度与结果自动保存</span></div>
       </div>
       <div class="hero-art" aria-hidden="true"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><span class="art-watermark">R</span><div class="showcase-hand"><GameCard v-for="card in showcase" :key="card.id" :card="card" disabled /></div><div class="art-caption"><span>01 — THE CLASSICS</span><b>ONE MORE ROUND.</b></div></div>
     </section>
@@ -62,15 +62,15 @@ function practice() {
     <div v-if="error" class="notice error page-width" role="alert">{{ error }}<button class="text-button" :disabled="joining" @click="practice">进入离线练习<UiIcon name="arrow" /></button></div>
 
     <section class="room-section page-width" aria-labelledby="room-title">
-      <div class="section-heading"><div><span class="eyebrow">TAKE YOUR SEAT</span><h2 id="room-title">选择你的牌桌</h2></div><span class="section-aside">练习操作，无需筹码</span></div>
+      <div class="section-heading"><div><span class="eyebrow">TAKE YOUR SEAT</span><h2 id="room-title">选择你的牌桌</h2></div><span class="section-aside">单人游玩，无需筹码</span></div>
       <div class="room-options">
-        <button class="room-option" :disabled="joining" @click="startRoom"><span class="option-icon"><UiIcon name="cards" /></span><span class="option-copy"><b>经典练习桌</b><small>随机发牌 · 在线保存 · 刷新可继续</small></span><span class="option-action">开局<UiIcon name="arrow" /></span></button>
+        <button class="room-option" :disabled="joining" data-testid="start-room" @click="startRoom('practice')"><span class="option-icon"><UiIcon name="cards" /></span><span class="option-copy"><b>经典练习桌</b><small>自由摸弃 · 在线保存 · 刷新可继续</small></span><span class="option-action">开局<UiIcon name="arrow" /></span></button>
         <button class="room-option" :disabled="joining" @click="practice"><span class="option-icon outlined"><UiIcon name="home" /></span><span class="option-copy"><b>自由练习桌</b><small>无需连接 · 即开即玩 · 离开后不保存</small></span><span class="option-action">练习<UiIcon name="arrow" /></span></button>
-        <button v-if="recent" class="room-option recent-option" :disabled="joining" data-testid="resume-room" @click="router.push({ name: 'rummy', query: { room: recent } })"><span class="option-icon outlined"><UiIcon name="refresh" /></span><span class="option-copy"><b>继续上次牌局</b><small>回到最近一次在线练习</small></span><span class="option-action">继续<UiIcon name="arrow" /></span></button>
+        <button v-if="recent" class="room-option recent-option" :disabled="joining" data-testid="resume-room" @click="router.push({ name: 'rummy', query: { room: recent } })"><span class="option-icon outlined"><UiIcon name="refresh" /></span><span class="option-copy"><b>继续上次牌局</b><small>回到最近的在线牌桌或查看已完成结果</small></span><span class="option-action">继续<UiIcon name="arrow" /></span></button>
       </div>
     </section>
     <section class="lobby-footnote page-width"><div><span class="tiny-card-mark">R</span><span>108 张牌，四种色彩。<small>从简单的一轮开始。</small></span></div><GameHelp /></section>
-    <footer class="club-footer page-width"><span>牌友 RUMMY CLUB</span><span>单人操作练习 · 多人对局筹备中</span></footer>
+    <footer class="club-footer page-width"><span>牌友 RUMMY CLUB</span><span>单人挑战与练习 · 多人对局筹备中</span></footer>
     <nav class="mobile-nav" aria-label="底部导航"><a href="/" aria-current="page"><UiIcon name="home" />大厅</a><button :disabled="joining" @click="practice"><UiIcon name="cards" />练习</button><GameHelp /></nav>
   </main>
 </template>

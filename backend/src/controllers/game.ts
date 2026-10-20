@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { resolve } from 'node:path';
 import { shuffle } from '../game/engine/deck';
 import { FileRoomRepository, newRoom, roomView, RoomRepository, RoomState } from '../game/rooms';
+import { challengeGroups } from '../game/rules/challenge';
 
 export function createGameController(repository: RoomRepository) {
   function withRoom(req: Request, res: Response, action: (room: RoomState) => void) {
@@ -24,6 +25,10 @@ export function createGameController(repository: RoomRepository) {
       res.status(409).send({ message: '牌局已在其他页面更新，请重新同步。', state: roomView(room) });
       return false;
     }
+    if (room.challenge?.status === 'completed') {
+      res.status(409).send({ message: '本局挑战已完成，可以查看结果或开始下一局。', state: roomView(room) });
+      return false;
+    }
     return true;
   }
 
@@ -34,9 +39,14 @@ export function createGameController(repository: RoomRepository) {
   }
 
   return {
-    create(_req: Request, res: Response): void {
+    create(req: Request, res: Response): void {
+      const mode = req.body?.mode ?? 'practice';
+      if (mode !== 'practice' && mode !== 'challenge') {
+        res.status(400).send({ message: '请选择支持的牌桌模式。' });
+        return;
+      }
       try {
-        const room = newRoom();
+        const room = newRoom(mode);
         repository.write(room);
         res.status(201).send({ id: room.id, state: roomView(room) });
       } catch (error) {
@@ -86,6 +96,26 @@ export function createGameController(repository: RoomRepository) {
         save(res, room);
       });
     },
+    complete(req: Request, res: Response): void {
+      withRoom(req, res, room => {
+        if (!canAct(req, res, room)) return;
+        if (!room.challenge) {
+          res.status(422).send({ message: '练习桌不结算挑战，请从大厅进入数字组牌挑战。', state: roomView(room) });
+          return;
+        }
+        if (room.hasDrawn) {
+          res.status(409).send({ message: '请先弃牌，手牌保持 10 张后再提交。', state: roomView(room) });
+          return;
+        }
+        const groups = challengeGroups(room.hand);
+        if (groups.length !== 2) {
+          res.status(422).send({ message: '还需要两组三张同点数字牌，每张牌只能使用一次。', state: roomView(room) });
+          return;
+        }
+        room.challenge = { goal: 'two-sets', status: 'completed', groups, completedAt: Date.now(), turnsPlayed: room.turn - 1 };
+        save(res, room);
+      });
+    },
   };
 }
 
@@ -100,3 +130,4 @@ export const create = (req: Request, res: Response): void => handlers().create(r
 export const info = (req: Request, res: Response): void => handlers().info(req, res);
 export const draw = (req: Request, res: Response): void => handlers().draw(req, res);
 export const discard = (req: Request, res: Response): void => handlers().discard(req, res);
+export const complete = (req: Request, res: Response): void => handlers().complete(req, res);

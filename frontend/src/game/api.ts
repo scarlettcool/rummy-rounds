@@ -30,16 +30,17 @@ function validated(value: unknown, id?: string) {
   return value
 }
 
-export async function createRoom() {
-  const result = await request('/games', {}) as { id?: string; state?: unknown }
+export async function createRoom(mode: 'practice' | 'challenge' = 'practice') {
+  const result = await request('/games', { mode }) as { id?: string; state?: unknown }
   const state = validated(result.state)
   if (result.id !== state.id) throw new ApiError('房间数据不一致，请重试。')
+  if ((mode === 'challenge') !== !!state.challenge) throw new ApiError('牌桌模式不匹配，请刷新大厅后重试。')
   return state
 }
 export async function readRoom(id: string) {
   return validated(await request(`/games/${encodeURIComponent(id)}`), id)
 }
-export async function roomAction(id: string, action: 'draw' | 'discard', revision: number, cardId?: string) {
+export async function roomAction(id: string, action: 'draw' | 'discard' | 'complete', revision: number, cardId?: string) {
   return validated(await request(`/games/${encodeURIComponent(id)}/${action}`, { expectedRevision: revision, cardId }), id)
 }
 export async function checkHealth() {

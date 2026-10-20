@@ -1,3 +1,5 @@
+import { isChallengeState, type ChallengeState } from '@rules/challenge'
+
 export type CardColor = 'red' | 'yellow' | 'green' | 'blue' | 'wild'
 export type Card = { id: string; color: CardColor; value: string }
 export type RoomState = {
@@ -8,6 +10,7 @@ export type RoomState = {
   drawPileCount: number
   discardPile: Card | null
   player: { id: string; name: string; hand: Card[]; hasDrawn: boolean }
+  challenge?: ChallengeState
 }
 
 const colors: CardColor[] = ['red', 'yellow', 'green', 'blue', 'wild']
@@ -35,7 +38,9 @@ export function isRoomState(value: unknown): value is RoomState {
     Number.isInteger(s.drawPileCount) && s.drawPileCount >= 0 && s.drawPileCount <= 97 &&
     !!s.player && typeof s.player.hasDrawn === 'boolean' && Array.isArray(s.player.hand) &&
     s.player.hand.length === (s.player.hasDrawn ? 11 : 10) && s.player.hand.every(isCard) &&
-    new Set(s.player.hand.map(c => c.id)).size === s.player.hand.length && isCard(s.discardPile)
+    new Set(s.player.hand.map(c => c.id)).size === s.player.hand.length && isCard(s.discardPile) &&
+    (s.challenge === undefined || (isChallengeState(s.challenge, s.player.hand, s.player.hasDrawn, s.turn) &&
+      (s.challenge.status !== 'completed' || s.revision > 0)))
 }
 
 export function shuffled<T>(cards: T[]): T[] {

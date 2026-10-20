@@ -127,3 +127,91 @@ describe('saved practice rooms', () => {
     expect(call(controller, 'info', state.id).body).toEqual(state);
   });
 });
+
+function preparedChallenge(values = [1, 1, 1, 2, 2, 2, 3, 4, 5, 6]) {
+  const room = newRoom('challenge');
+  const pool = [...room.hand, ...room.drawPile, ...room.discardPile];
+  room.hand = values.map(value => {
+    const index = pool.findIndex(card => card.value === String(value));
+    return pool.splice(index, 1)[0];
+  });
+  room.discardPile = [pool.shift()!];
+  room.drawPile = pool;
+  repository.write(room);
+  return room;
+}
+
+describe('durable single-player challenges', () => {
+  it('creates an explicit challenge while old/default rooms remain practice rooms', () => {
+    const result = call(controller, 'create', undefined, { mode: 'challenge' });
+    expect(result.status).toBe(201);
+    expect(result.body.state.challenge).toEqual({ goal: 'two-sets', status: 'active' });
+    expect(create().challenge).toBeUndefined();
+    expect(call(controller, 'create', undefined, { mode: 'unknown' }).status).toBe(400);
+  });
+
+  it('saves the server-selected result and restores it after a restart', () => {
+    const room = preparedChallenge();
+    const result = call(controller, 'complete', room.id, { expectedRevision: 0, groups: [['fake']], turnsPlayed: -99 });
+    expect(result.status).toBe(200);
+    expect(result.body.revision).toBe(1);
+    expect(result.body.challenge).toMatchObject({ status: 'completed', turnsPlayed: 0 });
+    const proof = result.body.challenge;
+    expect(proof?.status === 'completed' && new Set(proof.groups.flat()).size).toBe(6);
+    const restarted = createGameController(new FileRoomRepository(directory));
+    expect(call(restarted, 'info', room.id).body).toEqual(result.body);
+    const saved = repository.read(room.id)!;
+    expect([...saved.hand, ...saved.drawPile, ...saved.discardPile]).toHaveLength(108);
+    expect(saved.hand).toHaveLength(10);
+  });
+
+  it('rejects repeated completion and all further moves on a finished room', () => {
+    const room = preparedChallenge();
+    const result = call(controller, 'complete', room.id, { expectedRevision: 0 }).body;
+    for (const action of ['draw', 'discard', 'complete'] as const) {
+      const reply = call(controller, action, room.id, { expectedRevision: 1, cardId: room.hand[0].id });
+      expect(reply.status).toBe(409);
+      expect(reply.body.state).toEqual(result);
+    }
+    expect(call(controller, 'complete', room.id, { expectedRevision: 0 }).status).toBe(409);
+    expect(call(controller, 'info', room.id).body).toEqual(result);
+  });
+
+  it('does not complete a practice room, an unmet goal or a hand awaiting discard', () => {
+    const practice = create();
+    expect(call(controller, 'complete', practice.id, { expectedRevision: 0 }).status).toBe(422);
+    const unmet = preparedChallenge([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(call(controller, 'complete', unmet.id, { expectedRevision: 0 }).status).toBe(422);
+    expect(repository.read(unmet.id)?.revision).toBe(0);
+    const ready = preparedChallenge();
+    const drawn = call(controller, 'draw', ready.id, { expectedRevision: 0 }).body;
+    expect(call(controller, 'complete', ready.id, { expectedRevision: 1 }).status).toBe(409);
+    const cardId = drawn.player.hand[10].id;
+    call(controller, 'discard', ready.id, { expectedRevision: 1, cardId });
+    const result = call(controller, 'complete', ready.id, { expectedRevision: 2 });
+    expect(result.status).toBe(200);
+    expect(result.body.challenge).toMatchObject({ status: 'completed', turnsPlayed: 1 });
+  });
+
+  it('does not announce a win when storing the result fails', () => {
+    const room = preparedChallenge();
+    const before = call(controller, 'info', room.id).body;
+    const failing = createGameController({ read: id => repository.read(id), write: () => { throw new Error('disk full'); } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(call(failing, 'complete', room.id, { expectedRevision: 0 }).status).toBe(503);
+    expect(call(controller, 'info', room.id).body).toEqual(before);
+  });
+
+  it('fails closed on a corrupted completed proof without overwriting it', () => {
+    const room = preparedChallenge();
+    call(controller, 'complete', room.id, { expectedRevision: 0 });
+    const file = join(directory, `${room.id}.json`);
+    const broken = JSON.parse(readFileSync(file, 'utf8'));
+    broken.challenge.groups[1] = broken.challenge.groups[0];
+    const contents = JSON.stringify(broken);
+    writeFileSync(file, contents);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(call(controller, 'info', room.id).status).toBe(503);
+    expect(readFileSync(file, 'utf8')).toBe(contents);
+  });
+});

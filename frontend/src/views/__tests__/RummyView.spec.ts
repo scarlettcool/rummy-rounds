@@ -2,14 +2,125 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
 import RummyView from '../RummyView.vue'
-import { ApiError, readRoom, roomAction } from '../../game/api'
-import { practiceRoom, type CardColor } from '../../game/room'
+import { ApiError, createRoom, readRoom, roomAction } from '../../game/api'
+import { practiceRoom, type CardColor, type RoomState } from '../../game/room'
+import { challengeGroups } from '@rules/challenge'
 
 const route = reactive({ query: { room: 'room-test' } })
-vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push: vi.fn() }) }))
+const { push } = vi.hoisted(() => ({ push: vi.fn() }))
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ push }) }))
 vi.mock('../../game/api', async () => {
   const actual = await vi.importActual<typeof import('../../game/api')>('../../game/api')
-  return { ...actual, readRoom: vi.fn(), roomAction: vi.fn() }
+  return { ...actual, createRoom: vi.fn(), readRoom: vi.fn(), roomAction: vi.fn() }
+})
+
+function challengeFixture(completed = false): RoomState {
+  const state = fixture()
+  const colors: CardColor[] = ['red', 'yellow', 'green', 'blue']
+  state.player.hand = [1, 1, 1, 2, 2, 2, 3, 4, 5, 6].map((value, i) => ({ id: `goal-${i}`, color: colors[i % 4], value: String(value) }))
+  state.challenge = completed
+    ? { goal: 'two-sets', status: 'completed', groups: challengeGroups(state.player.hand), completedAt: 12345, turnsPlayed: 0 }
+    : { goal: 'two-sets', status: 'active' }
+  if (completed) state.revision = 1
+  return state
+}
+
+describe('challenge completion and replay', () => {
+  it('does not confuse a long run with the required two sets', async () => {
+    const state = challengeFixture()
+    state.player.hand = Array.from({ length: 10 }, (_, i) => ({ id: `run-${i}`, color: 'red', value: String(i + 1) }))
+    vi.mocked(readRoom).mockResolvedValue(state)
+    await open()
+    expect(textState().coveredCards).toBe(10)
+    expect(textState().suggestions).toEqual([])
+    expect(wrapper.get('[data-testid="complete-challenge"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="draw-card"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('submits once and shows a result only after the saved server response', async () => {
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture())
+    await open()
+    let resolve!: (state: RoomState) => void
+    vi.mocked(roomAction).mockReturnValue(new Promise(done => { resolve = done }))
+    const submit = wrapper.get('[data-testid="complete-challenge"]')
+    await submit.trigger('click')
+    await submit.trigger('click')
+    expect(roomAction).toHaveBeenCalledTimes(1)
+    expect(roomAction).toHaveBeenCalledWith('room-test', 'complete', 0, undefined)
+    expect(wrapper.find('.challenge-result').exists()).toBe(false)
+    resolve(challengeFixture(true))
+    await flushPromises()
+    expect(wrapper.get('.challenge-result').text()).toContain('挑战完成')
+    expect(wrapper.findAll('.result-group .game-card')).toHaveLength(6)
+    expect(wrapper.find('[data-testid="draw-card"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="discard-card"]').exists()).toBe(false)
+    expect(wrapper.findAll('.hand-row .game-card').every(card => card.attributes('disabled') !== undefined)).toBe(true)
+  })
+
+  it('blocks on a lost completion response and restores the canonical result by syncing', async () => {
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture())
+    await open()
+    vi.mocked(roomAction).mockRejectedValue(new ApiError('保存连接中断', 503))
+    await wrapper.get('[data-testid="complete-challenge"]').trigger('click')
+    await flushPromises()
+    expect(textState().blocked).toBe(true)
+    expect(wrapper.find('.challenge-result').exists()).toBe(false)
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture(true))
+    await wrapper.get('.notice button').trigger('click')
+    await flushPromises()
+    expect(textState().blocked).toBe(false)
+    expect(wrapper.find('.challenge-result').exists()).toBe(true)
+  })
+
+  it('uses a rejected goal response without blocking subsequent play', async () => {
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture())
+    await open()
+    const changed = challengeFixture()
+    changed.player.hand[0] = { id: 'replacement', color: 'red', value: '12' }
+    changed.revision = 2
+    vi.mocked(roomAction).mockRejectedValue(new ApiError('目标尚未完成', 422, changed))
+    await wrapper.get('[data-testid="complete-challenge"]').trigger('click')
+    await flushPromises()
+    expect(textState().blocked).toBe(false)
+    expect(textState().revision).toBe(2)
+    expect(wrapper.get('[data-testid="draw-card"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="complete-challenge"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('restores a result and creates the next room once without losing the existing result on failure', async () => {
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture(true))
+    await open()
+    vi.mocked(createRoom).mockRejectedValueOnce(new ApiError('下一局暂时无法创建', 503))
+    await wrapper.get('[data-testid="next-challenge"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.challenge-result').exists()).toBe(true)
+    expect(textState().blocked).toBe(false)
+    expect(push).not.toHaveBeenCalled()
+    let resolve!: (state: RoomState) => void
+    vi.mocked(createRoom).mockReturnValue(new Promise(done => { resolve = done }))
+    const next = wrapper.get('[data-testid="next-challenge"]')
+    await next.trigger('click')
+    await next.trigger('click')
+    expect(createRoom).toHaveBeenCalledTimes(2)
+    resolve({ ...challengeFixture(), id: 'room-next' })
+    await flushPromises()
+    expect(createRoom).toHaveBeenLastCalledWith('challenge')
+    expect(push).toHaveBeenCalledWith({ name: 'rummy', query: { room: 'room-next' } })
+  })
+
+  it('ignores a next-room response after leaving the completed room', async () => {
+    vi.mocked(readRoom).mockResolvedValue(challengeFixture(true))
+    await open()
+    let resolve!: (state: RoomState) => void
+    vi.mocked(createRoom).mockReturnValue(new Promise(done => { resolve = done }))
+    await wrapper.get('[data-testid="next-challenge"]').trigger('click')
+    route.query.room = 'practice'
+    await flushPromises()
+    resolve({ ...challengeFixture(), id: 'room-too-late' })
+    await flushPromises()
+    expect(push).not.toHaveBeenCalled()
+    expect(textState().mode).toBe('practice')
+  })
 })
 let wrapper: VueWrapper
 function fixture() { return { ...practiceRoom().state, id: 'room-test' } }

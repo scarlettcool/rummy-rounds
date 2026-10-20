@@ -8,5 +8,6 @@ router.post('', gameController.create);
 router.get('/:id', gameController.info);
 router.post('/:id/draw', gameController.draw);
 router.post('/:id/discard', gameController.discard);
+router.post('/:id/complete', gameController.complete);
 
 export default router;
