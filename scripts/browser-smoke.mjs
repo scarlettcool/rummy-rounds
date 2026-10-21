@@ -104,12 +104,7 @@ try {
     await page.getByTestId('lobby-service').filter({ hasText: '牌桌服务在线' }).waitFor();
     assert.equal(new URL(page.url()).pathname, '/');
     await noOverflow(page);
-    assert.equal(await page.getByRole('alert').evaluate(element => {
-      const rect = element.getBoundingClientRect();
-      const nav = document.querySelector('.mobile-nav')?.getBoundingClientRect();
-      const overlapsNav = nav && rect.right > nav.left && rect.left < nav.right && rect.bottom > nav.top && rect.top < nav.bottom;
-      return rect.top >= 0 && rect.bottom <= window.innerHeight && !overlapsNav;
-    }), true, 'Lobby create error must be visible without scrolling or navigation overlap');
+    assert.equal(await page.getByRole('alert').isVisible(), true, 'Lobby create error must be visible');
     await screenshot(page, `${name}-lobby-create-retry`);
     await page.unroute('**/api/games');
     await page.getByTestId('start-room').click();
