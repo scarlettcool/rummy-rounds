@@ -31,9 +31,13 @@ The backend listens on port 5000 by default. Optional variables in `backend/.env
 ```dotenv
 PORT=5000
 ROOM_DATA_DIR=/absolute/path/to/persistent/rummy-rooms
+# Comma-separated exact browser origins. Required with NODE_ENV=production.
+# ALLOWED_ORIGINS=https://club.example
 ```
 
 Without `ROOM_DATA_DIR`, rooms are stored in `backend/.data/rooms` when launched from `backend`. Use a writable persistent volume in deployment. A single backend process owns that directory; do not point multiple replicas at it. Atomic snapshot replacement protects interrupted writes. Storage failures stop the action and preserve the last acknowledged state.
+
+The HTTP boundary accepts JSON game requests up to 8KB and rejects unlisted browser origins before a game action runs. Production requires explicit HTTPS `ALLOWED_ORIGINS` (origin only, without a trailing slash or path), including your same-origin frontend URL; startup fails for a missing/invalid list. Without an explicit list, development accepts only localhost/127.0.0.1 on ports 5173, 4173 and 4175. API responses use `Cache-Control: no-store`. Requests without `Origin` still work: this policy is not authentication or rate limiting. Account ownership, database migration and abuse controls remain pending; see [foundation roadmap](FOUNDATION_ROADMAP.md).
 
 Check that your setup worked by running the server.
 ```Shell
